@@ -1,0 +1,61 @@
+version: '3.8'
+
+networks:
+  public_net:
+  private_net:
+    internal: true # STRICTLY blocks external access
+
+services:
+  db:
+    image: mysql:8.0
+    networks:
+      - private_net
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: ssrflab
+      MYSQL_USER: labuser
+      MYSQL_PASSWORD: labpassword
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  admin-panel:
+    build: ./admin-panel
+    networks:
+      - private_net
+    expose:
+      - "8080"
+
+  metadata-service:
+    build: ./metadata-service
+    networks:
+      - private_net
+    hostname: metadata-api
+    expose:
+      - "80"
+
+  backend:
+    build: ./backend
+    networks:
+      - public_net
+      - private_net
+    depends_on:
+      - db
+    expose:
+      - "5000"
+
+  frontend:
+    build: ./frontend
+    networks:
+      - public_net
+    expose:
+      - "80"
+
+  proxy:
+    build: ./proxy
+    networks:
+      - public_net
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend

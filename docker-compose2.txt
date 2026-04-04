@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    networks:
+      - app-network
+
+  backend:
+    build: ./backend
+    container_name: backend
+    networks:
+      - app-network
+
+  db:
+    image: mysql:8
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ssrf_lab
+    networks:
+      - app-network
+
+  admin:
+    build: ./admin
+    container_name: admin
+    networks:
+      - app-network
+
+  metadata:
+    build: ./metadata
+    container_name: metadata
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
