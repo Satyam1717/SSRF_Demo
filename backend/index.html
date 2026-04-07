@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSRF Vulnerable Blog</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f4f0;
+      --surface: #ffffff;
+      --border: #e4e2dc;
+      --text: #1a1a18;
+      --muted: #7a7870;
+      --accent: #2563eb;
+      --accent-light: #eff6ff;
+      --danger: #dc2626;
+      --link-bg: #f8f7f4;
+      --link-border: #dddbd4;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ---- AUTH ---- */
+    .auth-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+    }
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px;
+      width: 360px;
+      box-shadow: var(--shadow);
+    }
+    .auth-card h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 28px;
+      margin-bottom: 6px;
+    }
+    .auth-card p { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
+    .field input {
+      width: 100%; padding: 10px 14px;
+      border: 1px solid var(--border); border-radius: 8px;
+      font-family: inherit; font-size: 14px; background: var(--bg);
+      outline: none; transition: border-color .15s;
+    }
+    .field input:focus { border-color: var(--accent); background: #fff; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 10px 20px; border-radius: 8px; border: none;
+      font-family: inherit; font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--accent); color: #fff; width: 100%; padding: 12px; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--bg); }
+    .error-msg { color: var(--danger); font-size: 13px; margin-top: 10px; display: none; }
+
+    /* ---- APP LAYOUT ---- */
+    .app { display: none; max-width: 680px; margin: 0 auto; padding: 24px 16px; }
+
+    /* ---- HEADER ---- */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .header-brand h2 { font-family: 'DM Serif Display', serif; font-size: 22px; }
+    .header-brand span { font-size: 13px; color: var(--muted); }
+
+    /* ---- COMPOSER ---- */
+    .composer {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    .composer h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+    .composer input[type="text"],
+    .composer textarea {
+      width: 100%; padding: 10px 14px;
+      border: 1px solid var(--border); border-radius: 8px;
+      font-family: inherit; font-size: 14px; background: var(--bg);
+      outline: none; transition: border-color .15s; margin-bottom: 10px; resize: vertical;
+    }
+    .composer input[type="text"]:focus,
+    .composer textarea:focus { border-color: var(--accent); background: #fff; }
+
+    /* URL input row */
+    .url-row { position: relative; }
+    .url-row input { padding-left: 36px; margin-bottom: 0; }
+    .url-icon {
+      position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+      color: var(--muted); font-size: 15px; pointer-events: none;
+    }
+
+    /* Inline link preview in composer */
+    .composer-preview {
+      margin-top: 10px; border-radius: 10px; overflow: hidden;
+      border: 1px solid var(--link-border); background: var(--link-bg);
+      display: none;
+    }
+    .composer-preview.loading {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px; color: var(--muted); font-size: 13px;
+    }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .composer-footer {
+      display: flex; justify-content: flex-end; margin-top: 14px;
+    }
+
+    /* ---- FEED ---- */
+    .feed-header { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px; }
+    .post-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px;
+      box-shadow: var(--shadow); animation: fadeUp .3s ease;
+    }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .post-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--accent-light); color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600; flex-shrink: 0;
+    }
+    .post-author { font-size: 14px; font-weight: 600; }
+    .post-title { font-family: 'DM Serif Display', serif; font-size: 19px; line-height: 1.3; margin-bottom: 6px; }
+    .post-content { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+
+    /* ---- LINK PREVIEW CARD (WhatsApp style) ---- */
+    .link-preview {
+      border: 1px solid var(--link-border);
+      border-radius: 10px; overflow: hidden;
+      background: var(--link-bg);
+      cursor: pointer; text-decoration: none; display: block;
+      transition: border-color .15s, box-shadow .15s;
+      margin-top: 4px;
+    }
+    .link-preview:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+    .link-preview-img {
+      width: 100%; max-height: 220px; object-fit: cover;
+      display: block; border-bottom: 1px solid var(--link-border);
+    }
+    .link-preview-body { padding: 12px 14px; }
+    .link-preview-domain {
+      font-size: 11px; font-weight: 600; color: var(--accent);
+      text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;
+    }
+    .link-preview-title {
+      font-size: 14px; font-weight: 600; color: var(--text);
+      line-height: 1.4; margin-bottom: 4px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .link-preview-desc {
+      font-size: 13px; color: var(--muted); line-height: 1.5;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .link-preview-noimg .link-preview-body { display: flex; align-items: flex-start; gap: 12px; }
+    .link-preview-noimg .link-preview-icon {
+      font-size: 22px; flex-shrink: 0; margin-top: 2px;
+    }
+    .link-preview-noimg .link-preview-text { flex: 1; }
+
+    .empty-feed { text-align: center; padding: 48px 20px; color: var(--muted); font-size: 14px; }
+    .empty-feed .emoji { font-size: 36px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div class="auth-wrap" id="authWrap">
+  <div class="auth-card">
+    <h1>Welcome back</h1>
+    <p>Sign in to the SSRF Demo Blog</p>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="e.g. alice" onkeydown="if(event.key==='Enter')login()">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="e.g. alice123" onkeydown="if(event.key==='Enter')login()">
+    </div>
+    <button class="btn btn-primary" onclick="login()">Sign in</button>
+    <p class="error-msg" id="loginError">Invalid username or password</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:16px;">Hints: alice/alice123 &nbsp;·&nbsp; bob/bob123 &nbsp;·&nbsp; admin/admin123</p>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app" id="mainApp">
+  <div class="header">
+    <div class="header-brand">
+      <h2>Blog Feed</h2>
+      <span>Logged in as <b id="displayUser"></b></span>
+    </div>
+    <button class="btn btn-ghost" onclick="logout()">Sign out</button>
+  </div>
+
+  <!-- COMPOSER -->
+  <div class="composer">
+    <h3>Create a post</h3>
+    <input type="text" id="title" placeholder="Title">
+    <textarea id="content" rows="3" placeholder="What's on your mind?"></textarea>
+
+    <div class="url-row">
+      <span class="url-icon">🔗</span>
+      <input type="text" id="url" placeholder="Paste a link (optional)" oninput="onUrlInput(this.value)">
+    </div>
+
+    <!-- Live preview inside composer -->
+    <div class="composer-preview" id="composerPreview"></div>
+
+    <div class="composer-footer">
+      <button class="btn btn-primary" style="width:auto;padding:10px 24px" onclick="submitPost()">Publish</button>
+    </div>
+  </div>
+
+  <div class="feed-header">Recent posts</div>
+  <div id="feed"></div>
+</div>
+
+<script>
+let currentUser = localStorage.getItem('username');
+let urlDebounceTimer = null;
+let lastFetchedUrl = '';
+
+if (currentUser) showApp();
+
+function login() {
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:user,password:pass}) })
+    .then(r => r.json())
+    .then(data => {
+      if (data.username) {
+        currentUser = data.username;
+        localStorage.setItem('username', currentUser);
+        showApp();
+      } else {
+        document.getElementById('loginError').style.display = 'block';
+      }
+    });
+}
+
+function logout() {
+  localStorage.removeItem('username');
+  currentUser = null;
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('authWrap').style.display = 'flex';
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('authWrap').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+  document.getElementById('displayUser').innerText = currentUser;
+  loadPosts();
+}
+
+// ---- URL debounce & preview in composer ----
+function onUrlInput(val) {
+  clearTimeout(urlDebounceTimer);
+  const preview = document.getElementById('composerPreview');
+  if (!val) { preview.style.display = 'none'; preview.innerHTML = ''; lastFetchedUrl = ''; return; }
+  urlDebounceTimer = setTimeout(() => fetchAndShowPreview(val, preview), 700);
+}
+
+function fetchAndShowPreview(url, container) {
+  if (lastFetchedUrl === url) return;
+  lastFetchedUrl = url;
+  container.className = 'composer-preview loading';
+  container.innerHTML = '<div class="spinner"></div> Fetching preview…';
+  container.style.display = 'flex';
+
+  fetch('/api/og-preview?url=' + encodeURIComponent(url))
+    .then(r => r.json())
+    .then(data => {
+      container.className = 'composer-preview';
+      container.style.display = 'block';
+      container.innerHTML = buildPreviewCard(data);
+    })
+    .catch(() => {
+      container.style.display = 'none';
+    });
+}
+
+function buildPreviewCard(d) {
+  if (d.error && !d.title) return '';
+  const img = d.image ? `<img class="link-preview-img" src="${escHtml(d.image)}" onerror="this.style.display='none'">` : '';
+  const noImgClass = d.image ? '' : ' link-preview-noimg';
+  const icon = d.image ? '' : '<span class="link-preview-icon">🌐</span>';
+  const textWrapOpen = d.image ? '' : '<div class="link-preview-text">';
+  const textWrapClose = d.image ? '' : '</div>';
+  return `<a class="link-preview${noImgClass}" href="${escHtml(d.url)}" target="_blank" rel="noopener">
+    ${img}
+    <div class="link-preview-body">
+      ${icon}
+      ${textWrapOpen}
+      <div class="link-preview-domain">${escHtml(d.domain || d.site_name || '')}</div>
+      <div class="link-preview-title">${escHtml(d.title || d.url)}</div>
+      ${d.description ? `<div class="link-preview-desc">${escHtml(d.description)}</div>` : ''}
+      ${textWrapClose}
+    </div>
+  </a>`;
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ---- Submit post ----
+function submitPost() {
+  const title = document.getElementById('title').value.trim();
+  const content = document.getElementById('content').value.trim();
+  const url = document.getElementById('url').value.trim();
+  if (!title || !content) { alert('Please fill in title and content.'); return; }
+
+  fetch('/api/posts', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({username:currentUser, title, content, url})
+  }).then(() => {
+    document.getElementById('title').value = '';
+    document.getElementById('content').value = '';
+    document.getElementById('url').value = '';
+    document.getElementById('composerPreview').style.display = 'none';
+    document.getElementById('composerPreview').innerHTML = '';
+    lastFetchedUrl = '';
+    loadPosts();
+  });
+}
+
+// ---- Feed ----
+function loadPosts() {
+  fetch('/api/posts').then(r => r.json()).then(posts => {
+    const feed = document.getElementById('feed');
+    if (!posts.length) {
+      feed.innerHTML = '<div class="empty-feed"><div class="emoji">✍️</div>No posts yet. Be the first!</div>';
+      return;
+    }
+    feed.innerHTML = posts.map(p => buildPostCard(p)).join('');
+    // Fetch OG previews for posts that have URLs
+    posts.forEach(p => { if (p.url) fetchPostPreview(p.id, p.url); });
+  });
+}
+
+function buildPostCard(p) {
+  const initial = (p.username || '?')[0].toUpperCase();
+  return `<div class="post-card" id="post-${p.id}">
+    <div class="post-meta">
+      <div class="avatar">${initial}</div>
+      <span class="post-author">${escHtml(p.username)}</span>
+    </div>
+    <div class="post-title">${escHtml(p.title)}</div>
+    <div class="post-content">${escHtml(p.content)}</div>
+    ${p.url ? `<div id="preview-${p.id}"><div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;padding:2px 0"><div class="spinner" style="width:13px;height:13px;border-width:2px"></div> Loading preview…</div></div>` : ''}
+  </div>`;
+}
+
+function fetchPostPreview(postId, url) {
+  fetch('/api/og-preview?url=' + encodeURIComponent(url))
+    .then(r => r.json())
+    .then(data => {
+      const el = document.getElementById('preview-' + postId);
+      if (el) el.innerHTML = buildPreviewCard(data);
+    })
+    .catch(() => {
+      const el = document.getElementById('preview-' + postId);
+      if (el) el.innerHTML = `<a href="${escHtml(url)}" target="_blank" style="font-size:13px;color:var(--accent)">${escHtml(url)}</a>`;
+    });
+}
+</script>
+</body>
+</html>
